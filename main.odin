@@ -1,18 +1,19 @@
 //+vet
 package main
 
+import "core:os"
 import "core:fmt"
-import "core:mem"
+import "core:bytes"
+import "core:reflect"
 import "core:mem/virtual"
 import "core:math/bits"
-import "core:bytes"
 import "core:encoding/endian"
 import "core:hash/xxhash"
-import "core:reflect"
-// import "core:os"
 
 main :: proc() {
-  file, err := virtual.map_file("assets/bokeh.ppm", {.Read})
+  ppm_path := os.args[1]
+
+  file, err := virtual.map_file(ppm_path, {.Read})
   if err != virtual.Map_File_Error.None {
     fmt.eprintf("%v\n", err)
   }
@@ -29,13 +30,14 @@ main :: proc() {
     fmt.eprintf("%v\n", xerr)
   }
 
-
   header := (^Header)(bytes.ptr_from_bytes(file[pos:pos+size_of(Header)]))
   frame_count := header.frame_count + 1
   pos += size_of(Header)
   
   // metadata := (^Metadata)(bytes.ptr_from_bytes(file[pos:pos+size_of(Metadata)]));
   pos += size_of(Metadata)
+
+  // metadata := (^Thumbnail)(bytes.ptr_from_bytes(file[pos:pos+size_of(Thumbnail)]));
   pos += size_of(Thumbnail)
   
   animation_header := (^AnimationHeader)(bytes.ptr_from_bytes(file[pos:pos+size_of(AnimationHeader)]))
@@ -86,7 +88,6 @@ main :: proc() {
               for x := 0; x < Frame_Width; x += 1 {
                 layers[l][y][x] = true
               }
-              _ = mem.set
             }
             fallthrough
           case .Compressed:
@@ -125,22 +126,20 @@ main :: proc() {
     } else {
       for l := 0; l < 2; l += 1 {
         for y := 0; y < Frame_Height; y += 1 {
-          for x := 0; x < Frame_Width; x += 1 {
-            previous_layers[l][y][x] ~= layers[l][y][x]
-          }
+          previous_layers[l][y] ~= layers[l][y]
         }
       }
     }
 
-    // HASHING
     colors := []u32{
       paper_color_hex(frame_header.paper_color),
       pen_color_hex(frame_header.layer_1_pen, frame_header.paper_color),
       pen_color_hex(frame_header.layer_2_pen, frame_header.paper_color),
     }
-
-    // fmt.printf("%v\n", layers[0][4])
     
+    if translation != nil {
+      panic("translation is not handled")
+    }
     for y := 0; y < Frame_Height; y += 1 {
       for x := 0; x < Frame_Width; x += 1 {
         pixel_1 := previous_layers[0][y][x]
@@ -165,11 +164,6 @@ main :: proc() {
   // }
   // _ = os.read;
   
-  // fmt.printf("%v\n", header);
-  // fmt.printf("%v\n", metadata);
-  // fmt.printf("%v\nflags: %v\n", animation_header, extract_animation_header_flags(animation_header.flags));
-  // fmt.printf("%v\n", frame_offset);
-  // fmt.printf("%v\n", frame_data);
   fmt.printf("%v\n", xxhash.XXH64_digest(hash_state))
 }
 
